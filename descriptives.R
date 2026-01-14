@@ -18,11 +18,7 @@ winsorize_variable <- function(x, probs = c(0.01, 0.99)) {
   return(x)
 }
 
-african_iso3 <- countrycode::codelist$iso3c[countrycode::codelist$continent == "Africa"]
-african_iso3 <- african_iso3[!is.na(african_iso3)]
-print(african_iso3)
-
-# Load your data sets
+# Load data sets
 aiddata <- read_csv("china_aid_flows_country_year.csv")
 crs <- read_csv("multilateral_aid_flows_country_year.csv") 
 # governance <- read_csv("CorruptionIndex.csv") # World Bank Corruption index
@@ -237,24 +233,6 @@ descriptive_vars <- c("debt_service_ratio", "china_loans_lag1", "multilateral_lo
 
 descriptive_data <- final_data[descriptive_vars]
 
-# Simple but effective
-analysis_sample <- final_data %>%
-  filter(!is.na(debt_service_ratio) & 
-           !is.na(china_loans_lag1) & 
-           !is.na(multilateral_loans_lag1) &
-           !is.na(governance_ind))
-
-cat("ACTUAL Analysis Sample:\n")
-cat("Countries:", length(unique(analysis_sample$Country_Code)), "\n")
-cat("Years:", length(unique(analysis_sample$Year)), "\n") 
-cat("Total observations:", nrow(analysis_sample), "\n")
-
-# Descriptives on actual analysis sample
-stargazer(analysis_sample[descriptive_vars], 
-          type = "text",
-          title = "Descriptive Statistics (Analysis Sample)",
-          digits = 2)
-
 # Observations per country
 obs_per_country <- final_data %>%
   count(Country_Code) %>%
@@ -263,12 +241,11 @@ obs_per_country <- final_data %>%
             max_obs = max(n))
 print(obs_per_country)
 
+# Info on sample makeup
 regression_countries <- final_data %>%
-  # Select only the variables used in your regression
   select(Country_Code, debt_service_ratio, china_loans_lag1, multilateral_loans_lag1,
          governance_ind, china_corruption_interaction, multilateral_corruption_interaction,
          gdp_growth_lag1, inflation_lag1, trade_lag1, debt_gni_lag1, total_reserves_lag1) %>%
-  # Keep only complete cases (rows with no NAs in regression variables)
   na.omit() %>%
   # Get unique country codes
   distinct(Country_Code) %>%
@@ -331,54 +308,6 @@ summary_stats <- governance_range %>%
   )
 print(summary_stats)
 
-countries_range_gt_1 <- governance_range %>%
-  filter(governance_range > 2.25) %>%
-  # Get the years when min and max occurred to determine temporal direction
-  left_join(
-    panel_data %>%
-      group_by(`Country Code`) %>%
-      filter(governance_ind == max(governance_ind, na.rm = TRUE)) %>%
-      summarise(max_year = first(Year)),
-    by = "Country Code"
-  ) %>%
-  left_join(
-    panel_data %>%
-      group_by(`Country Code`) %>%
-      filter(governance_ind == min(governance_ind, na.rm = TRUE)) %>%
-      summarise(min_year = first(Year)),
-    by = "Country Code"
-  ) %>%
-  mutate(
-    temporal_direction = ifelse(max_year > min_year, "Increase", "Decrease"),
-    direction_detail = ifelse(max_year > min_year, 
-                              "Low to High (Improvement)", 
-                              "High to Low (Deterioration)")
-  ) %>%
-  arrange(desc(governance_range))
-
-cat("COUNTRIES WITH GOVERNANCE RANGE GREATER THAN 1 SD:\n")
-print(countries_range_gt_1, n = nrow(countries_range_gt_1))
-
-# Summary by direction
-cat("\nSUMMARY BY TEMPORAL DIRECTION:\n")
-countries_range_gt_1 %>%
-  count(temporal_direction, direction_detail) %>%
-  print()
-
-gov_summary <- panel_data %>%
-  summarize(
-    median = median(governance_ind, na.rm = TRUE),
-    min = min(governance_ind, na.rm = TRUE),
-    max = max(governance_ind, na.rm = TRUE),
-    range = max(governance_ind, na.rm = TRUE) - min(governance_ind, na.rm = TRUE)
-  )
-
-# Deciles
-gov_deciles <- quantile(panel_data$governance_ind, probs = seq(0, 1, 0.1), na.rm = TRUE)
-
-# Print results
-print(gov_summary)
-print(gov_deciles)
 
 # Create descriptive statistics table
 desc_vars <- c("debt_service_ratio", "china_loans_lag1", "multilateral_loans_lag1",
@@ -446,8 +375,8 @@ ggplot(aggregate_lending, aes(x = Year, y = total_lending, group = lender_type))
   scale_x_continuous(breaks = seq(2000, 2022, by = 2)) +
   scale_y_continuous(labels = scales::comma)
 
-# Optional: Save the plot
-ggsave("aggregate_lending_trends.png", width = 10, height = 6, dpi = 300)
+# Save the plot (commented out to keep files clean)
+# ggsave("aggregate_lending_trends.png", width = 10, height = 6, dpi = 300)
 
 # Calculate Herfindahl-Hirschman Index for loan concentration
 calculate_hhi <- function(loan_amounts) {
@@ -520,9 +449,3 @@ hhi_multilateral <- panel_data %>%
 cat("Herfindahl-Hirschman Index (HHI) for Loan Concentration:\n")
 cat("Chinese loans HHI:", round(hhi_china, 2), "\n")
 cat("Multilateral loans HHI:", round(hhi_multilateral, 2), "\n\n")
-
-# Interpretation
-cat("HHI Interpretation:\n")
-cat("Below 1,500: Unconcentrated\n")
-cat("1,500-2,500: Moderately concentrated\n") 
-cat("Above 2,500: Highly concentrated\n")
